@@ -1,86 +1,52 @@
-"""
-skin_gate.py
-------------
-Human skin gating filter.
-Rejects images that don't contain sufficient human skin before
-they reach the lesion classifier. Uses HSV-based skin color
-segmentation — fast, no extra model needed.
-"""
-
 import cv2
 import numpy as np
 from PIL import Image
 
-
-# HSV skin color range (works for diverse skin tones)
-# Lower/upper bounds tuned on Fitzpatrick scale types I–VI
-_SKIN_LOWER = np.array([0,   15,  50],  dtype=np.uint8)
-_SKIN_UPPER = np.array([25, 200, 255],  dtype=np.uint8)
-
-# Second range to catch reddish/dark tones
-_SKIN_LOWER2 = np.array([160, 15,  50],  dtype=np.uint8)
-_SKIN_UPPER2 = np.array([180, 200, 255], dtype=np.uint8)
-
-
 def skin_pixel_ratio(image: Image.Image) -> float:
-    """
-    Returns the fraction of pixels classified as skin (0.0 – 1.0).
-
-    Parameters
-    ----------
-    image : PIL.Image
-        RGB image of any size.
-
-    Returns
-    -------
-    float
-        Proportion of skin-coloured pixels.
-    """
     img_np = np.array(image.convert("RGB"))
+    
+    # 1. YCrCb Strict Bounds
+    ycrcb = cv2.cvtColor(img_np, cv2.COLOR_RGB2YCrCb)
+    lower_ycrcb = np.array([0, 138, 67], dtype=np.uint8)
+    upper_ycrcb = np.array([255, 173, 133], dtype=np.uint8)
+    mask_ycrcb = cv2.inRange(ycrcb, lower_ycrcb, upper_ycrcb)
+
+    # 2. HSV Strict Bounds (Limits the "Sand/Wood" yellowish hues)
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+    lower_hsv = np.array([0, 15, 0], dtype=np.uint8)
+    upper_hsv = np.array([17, 170, 255], dtype=np.uint8)
+    mask_hsv = cv2.inRange(hsv, lower_hsv, upper_hsv)
 
-    mask1 = cv2.inRange(hsv, _SKIN_LOWER,  _SKIN_UPPER)
-    mask2 = cv2.inRange(hsv, _SKIN_LOWER2, _SKIN_UPPER2)
-    mask  = cv2.bitwise_or(mask1, mask2)
+    # 3. RGB Heuristics (Peer et al. algorithm for skin)
+    R, G, B = img_np[:,:,0], img_np[:,:,1], img_np[:,:,2]
+    mask_rgb = (
+        (R > 95) & (G > 40) & (B > 20) & 
+        ((np.maximum(R, np.maximum(G, B)) - np.minimum(R, np.minimum(G, B))) > 15) & 
+        (np.abs(R.astype(int) - G.astype(int)) > 15) & 
+        (R > G) & (R > B)
+    ).astype(np.uint8) * 255
 
-    # Optional: morphological closing to fill small gaps
+    # Intersect all three masks (Pixels MUST pass all three tests)
+    combined_color_mask = cv2.bitwise_and(mask_ycrcb, mask_hsv)
+    combined_color_mask = cv2.bitwise_and(combined_color_mask, mask_rgb)
+
+    # Clean up the mask
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    skin_mask = cv2.morphologyEx(combined_color_mask, cv2.MORPH_CLOSE, kernel)
 
-    total_pixels = mask.size
-    skin_pixels  = int(np.sum(mask > 0))
+    # 4. Edge Subtraction (Canny)
+    gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(gray, threshold1=80, threshold2=160)
+    edges = cv2.dilate(edges, kernel, iterations=1)
+
+    # Final Subtraction
+    refined_mask = cv2.bitwise_and(skin_mask, cv2.bitwise_not(edges))
+
+    total_pixels = refined_mask.size
+    skin_pixels = int(np.sum(refined_mask > 0))
+    
     return skin_pixels / total_pixels
 
-
-def is_skin_image(
-    image: Image.Image,
-    threshold: float = 0.15,
-) -> tuple[bool, float]:
-    """
-    Gate: decides whether an image contains enough human skin.
-
-    Parameters
-    ----------
-    image     : PIL.Image  — input image
-    threshold : float      — minimum skin pixel ratio (default 0.15 = 15 %)
-
-    Returns
-    -------
-    (passed: bool, ratio: float)
-        passed — True if the image passes the skin gate
-        ratio  — actual skin pixel ratio for logging / debugging
-    """
+def is_skin_image(image: Image.Image, threshold: float = 0.15) -> tuple[bool, float]:
     ratio = skin_pixel_ratio(image)
     return ratio >= threshold, ratio
-
-
-# ---------------------------------------------------------------------------
-# Quick CLI test:  python skin_gate.py path/to/image.jpg
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    import sys
-    path = sys.argv[1]
-    img  = Image.open(path)
-    passed, ratio = is_skin_image(img)
-    status = "PASS" if passed else "REJECT"
-    print(f"[{status}]  skin ratio = {ratio:.3f}  ({path})")
