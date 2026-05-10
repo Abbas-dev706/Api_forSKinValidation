@@ -6,6 +6,5 @@ transformers
 torch
 torchvision
 openai
-tensorflow
 numpy
 opencv-python-headless

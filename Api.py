@@ -1,10 +1,12 @@
 import os
 import json
 import asyncio
-import numpy as np
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+# --- NEW: Tell Hugging Face to NEVER look for TensorFlow ---
+os.environ["USE_TF"] = "NO"
+os.environ["USE_TORCH"] = "YES"
 
 # IMPORT Query so we can use URL parameters
 from fastapi import FastAPI, File, UploadFile, Query
@@ -13,7 +15,11 @@ from PIL import Image
 import io
 from transformers import pipeline
 from openai import AsyncOpenAI
-from tensorflow.keras.models import load_model
+
+# --- NEW: PyTorch Imports ---
+import torch
+import torch.nn as nn
+from torchvision import models, transforms
 
 app = FastAPI(title="Skin Detection API")
 
@@ -21,12 +27,36 @@ app = FastAPI(title="Skin Detection API")
 # INITIALIZE MODELS
 # ---------------------------------------------------------
 classifier = pipeline(
-    "zero-shot-image-classification", model="openai/clip-vit-base-patch32"
+    "zero-shot-image-classification", 
+    model="openai/clip-vit-base-patch32",
+    framework="pt" 
 )
 
 try:
-    disease_model = load_model("skin_disease_3class_FINETUNED.h5")
-    DISEASE_CLASSES = ["Melanoma", "Basal Cell Carcinoma", "Melanocytic Nevi"]
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Loading PyTorch model on {DEVICE}...")
+    
+    # Initialize ResNet50 for 4 classes
+    disease_model = models.resnet50(weights=None)
+    num_ftrs = disease_model.fc.in_features
+    disease_model.fc = nn.Linear(num_ftrs, 4) 
+    
+    # Load your trained PyTorch weights
+    disease_model.load_state_dict(torch.load("skin_disease_final.pth", map_location=DEVICE))
+    disease_model.to(DEVICE)
+    disease_model.eval() 
+    
+    # MUST match your training folders exactly
+    DISEASE_CLASSES = ['Basal Cell Carcinoma (BCC)', 'Melanocytic Nevi (NV)', 'Melanoma', 'normal']
+    
+    # Image Preprocessing for PyTorch
+    preprocess = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
+    print("PyTorch Model loaded successfully!")
+
 except Exception as e:
     print(f"Warning: Could not load the disease model. Error: {e}")
     disease_model = None
@@ -40,7 +70,6 @@ def home():
     return {"message": "Skin Detection API is running"}
 
 
-# ADDED: `stream: bool = Query(True)` allows you to toggle streaming via URL
 @app.post("/check-skin/")
 async def check_skin(
     file: UploadFile = File(...),
@@ -63,36 +92,33 @@ async def check_skin(
         }
 
         # --- STAGE 1: THE UNIVERSAL GATEKEEPER ---
-        # The target label must be an exact match to proceed
         TARGET_LABEL = (
             "a clear, close-up photograph of human skin, a human face, or a body part"
         )
 
         validity_labels = [
-            TARGET_LABEL,  # 0: The only acceptable label
+            TARGET_LABEL,  
             "a blurry, completely out-of-focus, or unreadable image",
-            "a photo of a computer screen, laptop monitor, or digital display",  # 1: Screen Trap
-            "a digital illustration, cartoon, anime, or 3D graphic",  # 2: Art/Graphic Trap
-            "a document, text, screenshot, receipt, or meme",  # 3: Text Trap
-            "an animal, pet, dog, cat, or wildlife",  # 4: Animal Trap
-            "food, meals, groceries, or beverages",  # 5: Food Trap
-            "a vehicle, car, motorcycle, or transportation",  # 6: Vehicle Trap
-            "a building, indoor room, architecture, or outdoor landscape",  # 7: Environment Trap
-            "clothing, fabric, shoes, or fashion accessories",  # 8: Clothing Trap
-            "an inanimate object, tool, gadget, toy, or furniture",  # 9: General Object Trap
-            "a wide shot of a crowd or a group of people standing far away",  # 10: Crowd Trap (Stops far-away photos)
+            "a photo of a computer screen, laptop monitor, or digital display",  
+            "a digital illustration, cartoon, anime, or 3D graphic",  
+            "a document, text, screenshot, receipt, or meme",  
+            "an animal, pet, dog, cat, or wildlife",  
+            "food, meals, groceries, or beverages",  
+            "a vehicle, car, motorcycle, or transportation",  
+            "a building, indoor room, architecture, or outdoor landscape",  
+            "clothing, fabric, shoes, or fashion accessories",  
+            "an inanimate object, tool, gadget, toy, or furniture",  
+            "a wide shot of a crowd or a group of people standing far away",  
         ]
 
         val_results = classifier(image, candidate_labels=validity_labels)
         top_validity = val_results[0]["label"]
 
-        # DEBUG: Print the top 3 scores to the terminal to see what the AI is thinking
         print(f"\n--- GATEKEEPER SCORES ---")
         for i in range(3):
             print(f"{val_results[i]['label']}: {val_results[i]['score']:.3f}")
         print("-------------------------\n")
 
-        # If it's anything other than our exact target label, reject it.
         if top_validity != TARGET_LABEL:
             if stream:
                 return StreamingResponse(
@@ -122,7 +148,7 @@ async def check_skin(
         ]
         health_labels = [
             "normal healthy skin",
-            "skin with common acne, pimples, or clear pores",  # NEW MIDDLE GROUND
+            "skin with common acne, pimples, or clear pores",  
             "skin with abnormal moles, melanomas, or diseased lesions",
         ]
 
@@ -146,28 +172,40 @@ async def check_skin(
             },
         }
 
-        # --- STAGE 3: THE DISEASE SPECIALIST ---
+        # --- STAGE 3: THE DISEASE SPECIALIST (PyTorch) ---
         clip_health_score = health_res[0]["score"]
 
-        # FIX: Matches new severe label, and requires > 0.70 confidence to ignore shadows
+        # Only run PyTorch if CLIP thinks it's a disease (ignoring shadows)
         if (
             disease_model is not None
             and "abnormal moles" in health_status
             and clip_health_score > 0.70
         ):
-            img_resized = image.resize((224, 224))
-            img_array = np.array(img_resized) / 255.0
-            img_array = np.expand_dims(img_array, axis=0)
+            # 1. Preprocess the image for PyTorch
+            input_tensor = preprocess(image).unsqueeze(0).to(DEVICE)
 
-            predictions = disease_model.predict(img_array)[0]
-            top_index = np.argmax(predictions)
-            top_class = DISEASE_CLASSES[top_index]
-            top_confidence = round(float(predictions[top_index]), 3)
+            # 2. Make Prediction
+            with torch.no_grad():
+                outputs = disease_model(input_tensor)
+                probabilities = torch.nn.functional.softmax(outputs[0], dim=0)
+                confidence, predicted_idx = torch.max(probabilities, 0)
 
-            profile_data["disease_prediction"] = {
-                "detected_class": top_class,
-                "confidence_score": top_confidence,
-            }
+            top_class = DISEASE_CLASSES[predicted_idx.item()]
+            top_confidence = round(float(confidence.item()), 3)
+
+            # 3. Add debug info (Your mobile app ignores this, but Postman shows it)
+            all_probs = {DISEASE_CLASSES[i]: round(float(probabilities[i].item()), 3) for i in range(4)}
+            profile_data["model_2_debug"] = all_probs
+
+            # 4. OVERRIDE LOGIC: If the new 4th class says it's normal, erase the disease warning!
+            if top_class == "normal":
+                profile_data["health_status"] = "normal healthy skin (verified by secondary model)"
+                # We do NOT attach 'disease_prediction' so your Flutter app handles it normally.
+            else:
+                profile_data["disease_prediction"] = {
+                    "detected_class": top_class,
+                    "confidence_score": top_confidence,
+                }
 
         # --- STAGE 4: THE DEEPSEEK LLM ---
         if stream:
