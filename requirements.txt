@@ -4,6 +4,7 @@ python-multipart
 Pillow
 transformers
 torch
+torchvision
 openai
 tensorflow
 numpy
