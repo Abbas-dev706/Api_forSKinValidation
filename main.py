@@ -334,7 +334,9 @@ async def generate_llm_stream(is_valid: bool, profile_data: dict):
             if text_chunk:
                 chunk_data = {"type": "text", "content": text_chunk}
                 yield f"data: {json.dumps(chunk_data)}\n\n"
-                await asyncio.sleep(0.03)
+                
+                # 🚀 DELETED: await asyncio.sleep(0.03) 
+                # The stream will now flow at maximum network speed!
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
