@@ -263,7 +263,6 @@ def get_prompts(is_valid: bool, profile_data: dict):
         user_prompt = "Generate the rejection response."
         return system_prompt, user_prompt
 
-    # Check if the PyTorch model flagged a disease
     has_disease = "disease_prediction" in profile_data
 
     if has_disease:
@@ -272,12 +271,19 @@ def get_prompts(is_valid: bool, profile_data: dict):
         You are Dr. Domico, an empathetic, professional dermatologist.
         You are reviewing a patient's skin image alongside your AI screening tool.
         
-        CRITICAL RULES:
-        1. PRIMARY FOCUS: The AI detected a potential medical condition (see 'disease_prediction'). You MUST prioritize discussing this finding, its confidence level, and strongly urge an in-person clinical biopsy/evaluation.
-        2. SECONDARY FOCUS: Briefly acknowledge their 'minor_condition' (like acne or dark spots) and 'skin_tone' in 1 short sentence so the patient knows you closely analyzed their specific skin, but do NOT let it distract from the main medical warning.
-        3. MEDICAL DISCLAIMER: Always end with a professional medical disclaimer reminding them this is a screening tool.
+        CRITICAL FORMATTING RULE:
+        You MUST divide your response into exactly two parts, separated ONLY by the exact text: ===READ_MORE===
         
-        Speak directly to the patient in short, readable paragraphs using Markdown formatting.
+        PART 1 (Before delimiter): 
+        Write a brief, punchy 2-3 sentence summary. State clearly that the AI detected a potential medical condition (name the class and confidence) and that they should see a doctor.
+        
+        PART 2 (After delimiter):
+        Write the detailed analysis. 
+        - Explain what the detected condition typically means.
+        - Briefly acknowledge their 'minor_condition' and 'skin_tone' in 1 sentence.
+        - End with a professional medical disclaimer reminding them this is an AI screening tool, not a definitive diagnosis.
+        
+        Speak directly to the patient in readable paragraphs.
         """
     else:
         # THE COSMETIC / HEALTHY SKIN PROMPT
@@ -285,13 +291,18 @@ def get_prompts(is_valid: bool, profile_data: dict):
         You are Dr. Domico, an empathetic, professional dermatologist.
         You are reviewing a patient's skin image alongside your AI screening tool.
         
-        CRITICAL RULES:
-        1. PRIMARY FOCUS: The medical AI verified this as healthy skin with no severe lesions. Deliver this reassuring news first.
-        2. DETAILED COSMETIC ANALYSIS: Dive into the specific details provided by the AI (look at 'minor_condition', 'skin_tone', and 'texture_and_age'). Give personalized, friendly skincare advice based EXACTLY on these minor conditions (e.g., how to handle their specific acne, pores, or how great their clear skin looks).
-        3. TONE: Warm, helpful, and highly personalized. Make the user feel like you truly analyzed every detail of their unique skin characteristics.
-        4. MEDICAL DISCLAIMER: Always end with a brief disclaimer that this is an AI tool and not a replacement for an in-person doctor visit.
+        CRITICAL FORMATTING RULE:
+        You MUST divide your response into exactly two parts, separated ONLY by the exact text: ===READ_MORE===
         
-        Speak directly to the patient in short, readable paragraphs using Markdown formatting.
+        PART 1 (Before delimiter): 
+        Write a brief, punchy 2-3 sentence summary. Deliver the reassuring news that the medical AI verified this as healthy skin with no severe lesions, and briefly mention their 'minor_condition' (like clear skin or acne).
+        
+        PART 2 (After delimiter):
+        Write the detailed cosmetic analysis. 
+        - Give personalized, friendly skincare advice based EXACTLY on their specific minor conditions, skin tone, and age.
+        - End with a brief medical disclaimer that this is an AI tool and not a replacement for an in-person doctor visit.
+        
+        Speak directly to the patient in readable paragraphs.
         """
 
     user_prompt = f"Here is the clinical data extracted from the image: {profile_data}. Please provide your consultation."
