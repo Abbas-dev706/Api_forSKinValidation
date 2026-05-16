@@ -25,3 +25,73 @@ This API uses a "Conditional Routing" architecture to optimize speed and accurac
 ```bash
 git clone [https://github.com/yourusername/Api_forSKinValidation.git](https://github.com/yourusername/Api_forSKinValidation.git)
 cd Api_forSKinValidation
+
+```
+
+### 📋 Team Guide: Getting Started with the Dermico API
+
+Welcome to the backend team! We are hosting our FastAPI backend on Hugging Face Spaces. Because we are using Git to push code and dealing with large AI models, you need to do a quick one-time setup before you can pull or push code.
+
+#### 🛑 STEP 1: The One-Time Setup (Do this first)
+
+1. **Create a Hugging Face Account:** Make sure you have signed up at huggingface.co and accepted the invite to our Organization.
+2. **Generate an Access Token (Crucial):** Hugging Face does not allow you to push code using your account password.
+* Go to **Settings > Access Tokens**.
+* Click **Create new token**.
+* Select **Write** permissions (or Fine-grained with repo write access).
+* **Copy this token and save it somewhere safe.** You will paste this into your terminal when it asks for a password during `git push`.
+
+
+3. **Install Git LFS:** Because our `skin_disease_final.pth` model is huge, standard Git cannot handle it. Open your terminal and run:
+
+```bash
+git lfs install
+```
+
+
+*(If it says command not found, you need to download Git LFS from git-lfs.com first).*
+
+#### ⬇️ STEP 2: Your First Pull (Cloning the Repo)
+
+Once LFS is installed, you can pull the code to your local machine. Open your terminal in the folder where you want the project to live and run:
+
+```bash
+# Replace YOUR_ORG_NAME with our actual organization name
+git clone https://huggingface.co/spaces/dermico-team/dermico
+
+# Move into the project folder
+cd dermico
+
+```
+
+*Note: The download might take a minute because it is pulling the actual `.pth` weights.*
+
+#### 🔄 STEP 3: The Daily Workflow (Pull, Edit, Push)
+
+Before you start writing code for the day, **always pull the latest changes** so you don't overwrite someone else's work:
+
+```bash
+git pull origin main
+```
+
+When you are done writing your code and want to push it to the live server:
+
+```bash
+# 1. Stage your changes
+git add .
+
+# 2. Write a clear commit message
+git commit -m "Added new route for user history"
+
+# 3. Push to the live server
+git push
+
+```
+
+**Authentication Check:**
+When you hit `git push`, the terminal will ask for your credentials:
+
+* **Username:** Your Hugging Face username.
+* **Password:** Paste your **Access Token** (it will be invisible as you paste it, just press Enter).
+
+Once the push is successful, Hugging Face will automatically rebuild the Docker container and deploy the new code!
