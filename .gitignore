@@ -1,0 +1,94 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# PyCharm / IntelliJ
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+
+# Model and runtime artifacts
+*.pth
+*.pt
+*.h5
+*.ckpt
+
+# Ignore generated files
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore local configuration
+.env
+.env.*
+
+# Ignore coverage and test output
+coverage/
+pytest_cache/
+
+# Ignore data folders or temporary files
+*.tmp
+*.temp
+
+# Ignore operating system files
+desktop.ini
+
+# Ignore any secret or local config files
+secrets.json
+local_settings.py
